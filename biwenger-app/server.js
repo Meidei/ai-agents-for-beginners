@@ -52,6 +52,17 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// Temporary debug helper: shows exactly what Biwenger's /account endpoint
+// returns, to diagnose cases where leagues aren't being found.
+app.get('/api/debug/account', requireAuth, async (req, res) => {
+  try {
+    const raw = await biwenger.getAccountRaw(req.session.token);
+    res.json(raw);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get('/api/leagues', requireAuth, async (req, res) => {
   try {
     const leagues = await biwenger.getAccount(req.session.token);

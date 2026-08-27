@@ -56,10 +56,32 @@ async function login(email, password) {
   return token;
 }
 
+/** Fetches the raw, unparsed /account payload — useful for debugging when
+ * Biwenger's (undocumented) response shape doesn't match what we expect. */
+async function getAccountRaw(token) {
+  return biwengerFetch('/account', { token });
+}
+
 /** Lists the leagues (and the user id within each) available to this account. */
 async function getAccount(token) {
-  const data = await biwengerFetch('/account', { token });
-  const leagues = (data && data.leagues) || [];
+  const data = await getAccountRaw(token);
+
+  // Biwenger's /account shape isn't documented and has been observed to vary
+  // (leagues at the top level vs. nested under a wrapper). Try the known
+  // candidates before giving up.
+  const leagues =
+    (data && Array.isArray(data.leagues) && data.leagues) ||
+    (data && data.data && Array.isArray(data.data.leagues) && data.data.leagues) ||
+    (data && data.account && Array.isArray(data.account.leagues) && data.account.leagues) ||
+    [];
+
+  if (!leagues.length) {
+    console.warn(
+      '[biwenger] No leagues found in /account response. Raw payload for debugging:\n',
+      JSON.stringify(data, null, 2)
+    );
+  }
+
   return leagues.map((l) => ({
     id: l.id,
     name: l.name,
@@ -79,4 +101,4 @@ async function getTeam(token, leagueId, userId) {
   return data;
 }
 
-module.exports = { login, getAccount, getTeam };
+module.exports = { login, getAccount, getAccountRaw, getTeam };
