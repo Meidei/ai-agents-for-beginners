@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Biwenger Team Exporter</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="container">
+    <h1>Biwenger &mdash; Descarga tu equipo</h1>
+    <p class="hint">
+      Tus credenciales solo se usan para iniciar sesión en la API de Biwenger y no se
+      guardan en ningún sitio. Esta app no es oficial de Biwenger.
+    </p>
+
+    <section id="login-section" class="card">
+      <h2>1. Iniciar sesión</h2>
+      <form id="login-form">
+        <label>
+          Email
+          <input type="email" id="email" required autocomplete="username" />
+        </label>
+        <label>
+          Contraseña
+          <input type="password" id="password" required autocomplete="current-password" />
+        </label>
+        <button type="submit">Iniciar sesión</button>
+      </form>
+      <p id="login-error" class="error"></p>
+    </section>
+
+    <section id="league-section" class="card hidden">
+      <h2>2. Elige tu liga</h2>
+      <div id="leagues"></div>
+    </section>
+
+    <section id="team-section" class="card hidden">
+      <h2>3. Tu equipo</h2>
+      <div class="actions">
+        <button id="download-json">Descargar JSON</button>
+        <button id="download-csv">Descargar CSV</button>
+        <button id="logout">Cerrar sesión</button>
+      </div>
+      <div id="team-summary"></div>
+      <div id="team-table-wrap"></div>
+    </section>
+
+    <section id="market-section" class="card hidden">
+      <h2>4. Mercado de fichajes</h2>
+      <div class="actions">
+        <button id="market-download-json">Descargar JSON</button>
+        <button id="market-download-csv">Descargar CSV</button>
+      </div>
+      <div id="market-summary"></div>
+      <div id="market-table-wrap"></div>
+    </section>
+
+    <section id="bids-section" class="card hidden">
+      <h2>5. Pujas por jugador</h2>
+      <div class="actions">
+        <button id="bids-download-json">Descargar JSON</button>
+        <button id="bids-download-csv">Descargar CSV</button>
+      </div>
+      <div id="bids-summary"></div>
+      <div id="bids-table-wrap"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
