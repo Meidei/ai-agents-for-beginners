@@ -63,6 +63,20 @@ app.get('/api/debug/account', requireAuth, async (req, res) => {
   }
 });
 
+// Temporary debug helper: shows the raw player/team database for a
+// competition, to find where player names and team names live so the
+// market/bids views can be enriched with them. Defaults to "la-liga" —
+// override with ?competition=slug if that guess is wrong.
+app.get('/api/debug/players', requireAuth, async (req, res) => {
+  const competition = req.query.competition || 'la-liga';
+  try {
+    const raw = await biwenger.getCompetitionPlayersRaw(req.session.token, competition);
+    res.json(raw);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.get('/api/leagues', requireAuth, async (req, res) => {
   try {
     const leagues = await biwenger.getAccount(req.session.token);

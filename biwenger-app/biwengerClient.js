@@ -200,6 +200,15 @@ async function getMarketBids(token, leagueId, userId) {
   return rows;
 }
 
+/** Fetches the raw, unparsed player/team database for a competition (e.g.
+ * "la-liga"). This is where player names and team names live — the /market
+ * and /user endpoints only return player ids. Not yet wired into
+ * getMarket/getMarketBids because the response shape hasn't been confirmed
+ * against a real payload; use /api/debug/players to inspect it first. */
+async function getCompetitionPlayersRaw(token, competition = 'la-liga') {
+  return biwengerFetch(`/competitions/${competition}/data?fields=id,name,players,teams`, { token });
+}
+
 module.exports = {
   login,
   getAccount,
@@ -208,4 +217,5 @@ module.exports = {
   getMarket,
   getMarketRaw,
   getMarketBids,
+  getCompetitionPlayersRaw,
 };
