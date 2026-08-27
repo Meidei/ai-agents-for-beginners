@@ -111,17 +111,90 @@ app.get('/api/team/download', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/market', requireAuth, async (req, res) => {
+  const { leagueId, userId } = req.query;
+  if (!leagueId) {
+    return res.status(400).json({ error: 'leagueId query param is required.' });
+  }
+
+  try {
+    const market = await biwenger.getMarket(req.session.token, leagueId, userId);
+    res.json({ market });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Temporary debug helper: shows exactly what Biwenger's /market endpoint
+// returns, to diagnose cases where listings aren't being found.
+app.get('/api/debug/market', requireAuth, async (req, res) => {
+  const { leagueId, userId } = req.query;
+  if (!leagueId) {
+    return res.status(400).json({ error: 'leagueId query param is required.' });
+  }
+
+  try {
+    const raw = await biwenger.getMarketRaw(req.session.token, leagueId, userId);
+    res.json(raw);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/market/download', requireAuth, async (req, res) => {
+  const { leagueId, userId, format = 'json' } = req.query;
+  if (!leagueId) {
+    return res.status(400).json({ error: 'leagueId query param is required.' });
+  }
+
+  try {
+    const market = await biwenger.getMarket(req.session.token, leagueId, userId);
+
+    if (format === 'csv') {
+      const csv = toCsv(market);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="biwenger-market.csv"');
+      return res.send(csv);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="biwenger-market.json"');
+    res.send(JSON.stringify(market, null, 2));
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
+// Flattens a nested object into a single-level object with dot-notation
+// keys (e.g. { player: { name: 'X' } } -> { 'player.name': 'X' }), so every
+// characteristic Biwenger returns becomes its own CSV column instead of
+// being buried inside a JSON blob. Arrays are left as-is (and later
+// JSON-stringified by `escape`) since they don't map to flat columns.
+function flattenObject(obj, prefix = '', result = {}) {
+  for (const [key, value] of Object.entries(obj || {})) {
+    const flatKey = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      flattenObject(value, flatKey, result);
+    } else {
+      result[flatKey] = value;
+    }
+  }
+  return result;
+}
+
 // Converts an array of (possibly nested) objects into a flat CSV. Nested
-// objects/arrays are serialized to JSON within their cell so no data is lost
-// even if Biwenger's response shape changes.
+// objects are flattened into dot-notation columns; arrays are serialized to
+// JSON within their cell so no data is lost even if Biwenger's response
+// shape changes.
 function toCsv(items) {
   if (!items.length) return '';
 
-  const columns = [...new Set(items.flatMap((item) => Object.keys(item)))];
+  const flatItems = items.map((item) => flattenObject(item));
+  const columns = [...new Set(flatItems.flatMap((item) => Object.keys(item)))];
   const escape = (value) => {
     if (value === null || value === undefined) return '';
     const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
@@ -129,7 +202,7 @@ function toCsv(items) {
   };
 
   const header = columns.map(escape).join(',');
-  const rows = items.map((item) => columns.map((col) => escape(item[col])).join(','));
+  const rows = flatItems.map((item) => columns.map((col) => escape(item[col])).join(','));
   return [header, ...rows].join('\n');
 }
 

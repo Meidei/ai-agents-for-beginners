@@ -101,4 +101,42 @@ async function getTeam(token, leagueId, userId) {
   return data;
 }
 
-module.exports = { login, getAccount, getAccountRaw, getTeam };
+/** Fetches the raw, unparsed /market payload for a league. */
+async function getMarketRaw(token, leagueId, userId) {
+  return biwengerFetch('/market', { token, league: leagueId, user: userId });
+}
+
+// The list of market listings has been observed under different keys
+// depending on account/league type. Try the known candidates before
+// giving up.
+function extractMarketItems(data) {
+  if (Array.isArray(data)) return data;
+  const candidates = [
+    data && data.sales,
+    data && data.players,
+    data && data.data && Array.isArray(data.data) && data.data,
+    data && data.data && data.data.sales,
+    data && data.market && data.market.sales,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+/** Lists the players currently on the transfer market for a league. */
+async function getMarket(token, leagueId, userId) {
+  const data = await getMarketRaw(token, leagueId, userId);
+  const items = extractMarketItems(data);
+
+  if (!items.length) {
+    console.warn(
+      '[biwenger] No market listings found. Raw payload for debugging:\n',
+      JSON.stringify(data, null, 2)
+    );
+  }
+
+  return items;
+}
+
+module.exports = { login, getAccount, getAccountRaw, getTeam, getMarket, getMarketRaw };

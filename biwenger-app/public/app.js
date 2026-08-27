@@ -3,9 +3,11 @@
 const loginSection = document.getElementById('login-section');
 const leagueSection = document.getElementById('league-section');
 const teamSection = document.getElementById('team-section');
+const marketSection = document.getElementById('market-section');
 const loginError = document.getElementById('login-error');
 
 let currentLeague = null; // { id, userId }
+let currentMarketLeague = null; // { id, userId }
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -47,10 +49,16 @@ function renderLeagues(leagues) {
         <span class="hint">${escapeHtml(league.competition || '')} &middot; equipo: ${escapeHtml(league.teamName || '')}</span>
       </div>
     `;
-    const btn = document.createElement('button');
-    btn.textContent = 'Cargar equipo';
-    btn.addEventListener('click', () => loadTeam(league.id, league.userId));
-    row.appendChild(btn);
+    const teamBtn = document.createElement('button');
+    teamBtn.textContent = 'Cargar equipo';
+    teamBtn.addEventListener('click', () => loadTeam(league.id, league.userId));
+    row.appendChild(teamBtn);
+
+    const marketBtn = document.createElement('button');
+    marketBtn.textContent = 'Ver mercado';
+    marketBtn.addEventListener('click', () => loadMarket(league.id, league.userId));
+    row.appendChild(marketBtn);
+
     wrap.appendChild(row);
   });
 }
@@ -115,6 +123,79 @@ document.getElementById('download-csv').addEventListener('click', () => download
 function download(format) {
   if (!currentLeague) return;
   const url = `/api/team/download?leagueId=${currentLeague.id}&userId=${currentLeague.userId}&format=${format}`;
+  window.location.href = url;
+}
+
+async function loadMarket(leagueId, userId) {
+  currentMarketLeague = { id: leagueId, userId };
+  const res = await getJson(`/api/market?leagueId=${leagueId}&userId=${userId || ''}`);
+  renderMarket(res.market);
+  marketSection.classList.remove('hidden');
+  marketSection.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Flattens a nested object into dot-notation keys, mirroring the backend's
+// CSV flattening, so the on-screen table always matches what gets exported.
+function flattenObject(obj, prefix = '', result = {}) {
+  for (const [key, value] of Object.entries(obj || {})) {
+    const flatKey = prefix ? `${prefix}.${key}` : key;
+    if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+      flattenObject(value, flatKey, result);
+    } else {
+      result[flatKey] = value;
+    }
+  }
+  return result;
+}
+
+function renderMarket(items) {
+  const summary = document.getElementById('market-summary');
+  const tableWrap = document.getElementById('market-table-wrap');
+
+  if (!Array.isArray(items) || !items.length) {
+    summary.innerHTML = '<p>No se han encontrado jugadores en el mercado.</p>';
+    tableWrap.innerHTML = '';
+    return;
+  }
+
+  summary.innerHTML = `<p><strong>${items.length}</strong> jugadores en el mercado</p>`;
+
+  // The exact shape of a market listing isn't documented by Biwenger, so we
+  // render every characteristic it returns as its own column instead of
+  // guessing field names.
+  const flatItems = items.map((item) => flattenObject(item));
+  const columns = [...new Set(flatItems.flatMap((item) => Object.keys(item)))];
+
+  const headerRow = columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('');
+  const bodyRows = flatItems
+    .map((item) => {
+      const cells = columns
+        .map((col) => {
+          const value = item[col];
+          const text = value === null || value === undefined ? '' : String(value);
+          return `<td>${escapeHtml(text)}</td>`;
+        })
+        .join('');
+      return `<tr>${cells}</tr>`;
+    })
+    .join('');
+
+  tableWrap.innerHTML = `
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr>${headerRow}</tr></thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+document.getElementById('market-download-json').addEventListener('click', () => downloadMarket('json'));
+document.getElementById('market-download-csv').addEventListener('click', () => downloadMarket('csv'));
+
+function downloadMarket(format) {
+  if (!currentMarketLeague) return;
+  const url = `/api/market/download?leagueId=${currentMarketLeague.id}&userId=${currentMarketLeague.userId || ''}&format=${format}`;
   window.location.href = url;
 }
 
