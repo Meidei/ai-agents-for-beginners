@@ -139,4 +139,85 @@ async function getMarket(token, leagueId, userId) {
   return items;
 }
 
-module.exports = { login, getAccount, getAccountRaw, getTeam, getMarket, getMarketRaw };
+// The list of bids/offers on a single market listing has been observed
+// under different keys. Try the known candidates before giving up.
+function extractBids(item) {
+  const candidates = [item.offers, item.bids, item.requests, item.sale && item.sale.offers];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+function extractPlayerInfo(item) {
+  const player = item.player || item.playerMaster || item;
+  return {
+    playerId: player.id,
+    playerName: player.name,
+  };
+}
+
+// The bidder is embedded under different keys depending on listing type
+// (free agent vs. player put up for sale by another manager).
+function extractBidder(bid) {
+  const candidates = [bid.from, bid.user, bid.manager, bid.by, bid.owner];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') return candidate;
+  }
+  return null;
+}
+
+function extractAmount(bid) {
+  if (bid.amount !== undefined) return bid.amount;
+  if (bid.price !== undefined) return bid.price;
+  if (bid.value !== undefined) return bid.value;
+  return undefined;
+}
+
+function extractDate(bid) {
+  return bid.date || bid.createdAt || bid.timestamp || bid.until;
+}
+
+/** Lists every bid/offer placed on each market listing, with who placed it. */
+async function getMarketBids(token, leagueId, userId) {
+  const items = await getMarket(token, leagueId, userId);
+
+  const rows = [];
+  for (const item of items) {
+    const bids = extractBids(item);
+    if (!bids.length) continue;
+
+    const { playerId, playerName } = extractPlayerInfo(item);
+    for (const bid of bids) {
+      const bidder = extractBidder(bid);
+      rows.push({
+        playerId,
+        playerName,
+        bidAmount: extractAmount(bid),
+        bidderId: bidder && bidder.id,
+        bidderName: bidder && (bidder.name || bidder.userName),
+        date: extractDate(bid),
+      });
+    }
+  }
+
+  if (items.length && !rows.length) {
+    console.warn(
+      '[biwenger] Market listings found but no bids could be extracted from them. ' +
+        'Raw first listing for debugging:\n',
+      JSON.stringify(items[0], null, 2)
+    );
+  }
+
+  return rows;
+}
+
+module.exports = {
+  login,
+  getAccount,
+  getAccountRaw,
+  getTeam,
+  getMarket,
+  getMarketRaw,
+  getMarketBids,
+};

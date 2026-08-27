@@ -165,6 +165,44 @@ app.get('/api/market/download', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/api/market/bids', requireAuth, async (req, res) => {
+  const { leagueId, userId } = req.query;
+  if (!leagueId) {
+    return res.status(400).json({ error: 'leagueId query param is required.' });
+  }
+
+  try {
+    const bids = await biwenger.getMarketBids(req.session.token, leagueId, userId);
+    res.json({ bids });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/market/bids/download', requireAuth, async (req, res) => {
+  const { leagueId, userId, format = 'json' } = req.query;
+  if (!leagueId) {
+    return res.status(400).json({ error: 'leagueId query param is required.' });
+  }
+
+  try {
+    const bids = await biwenger.getMarketBids(req.session.token, leagueId, userId);
+
+    if (format === 'csv') {
+      const csv = toCsv(bids);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="biwenger-market-bids.csv"');
+      return res.send(csv);
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="biwenger-market-bids.json"');
+    res.send(JSON.stringify(bids, null, 2));
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });

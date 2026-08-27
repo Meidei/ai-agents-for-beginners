@@ -4,10 +4,12 @@ const loginSection = document.getElementById('login-section');
 const leagueSection = document.getElementById('league-section');
 const teamSection = document.getElementById('team-section');
 const marketSection = document.getElementById('market-section');
+const bidsSection = document.getElementById('bids-section');
 const loginError = document.getElementById('login-error');
 
 let currentLeague = null; // { id, userId }
 let currentMarketLeague = null; // { id, userId }
+let currentBidsLeague = null; // { id, userId }
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -58,6 +60,11 @@ function renderLeagues(leagues) {
     marketBtn.textContent = 'Ver mercado';
     marketBtn.addEventListener('click', () => loadMarket(league.id, league.userId));
     row.appendChild(marketBtn);
+
+    const bidsBtn = document.createElement('button');
+    bidsBtn.textContent = 'Ver pujas';
+    bidsBtn.addEventListener('click', () => loadBids(league.id, league.userId));
+    row.appendChild(bidsBtn);
 
     wrap.appendChild(row);
   });
@@ -196,6 +203,56 @@ document.getElementById('market-download-csv').addEventListener('click', () => d
 function downloadMarket(format) {
   if (!currentMarketLeague) return;
   const url = `/api/market/download?leagueId=${currentMarketLeague.id}&userId=${currentMarketLeague.userId || ''}&format=${format}`;
+  window.location.href = url;
+}
+
+async function loadBids(leagueId, userId) {
+  currentBidsLeague = { id: leagueId, userId };
+  const res = await getJson(`/api/market/bids?leagueId=${leagueId}&userId=${userId || ''}`);
+  renderBids(res.bids);
+  bidsSection.classList.remove('hidden');
+  bidsSection.scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderBids(bids) {
+  const summary = document.getElementById('bids-summary');
+  const tableWrap = document.getElementById('bids-table-wrap');
+
+  if (!Array.isArray(bids) || !bids.length) {
+    summary.innerHTML =
+      '<p>No se han encontrado pujas activas en el mercado (o Biwenger no expone las pujas para tu cuenta).</p>';
+    tableWrap.innerHTML = '';
+    return;
+  }
+
+  const players = new Set(bids.map((b) => b.playerName)).size;
+  summary.innerHTML = `<p><strong>${bids.length}</strong> pujas sobre <strong>${players}</strong> jugadores</p>`;
+
+  const rows = bids
+    .map(
+      (b) => `<tr>
+        <td>${escapeHtml(String(b.playerName ?? ''))}</td>
+        <td>${escapeHtml(String(b.bidAmount ?? ''))}</td>
+        <td>${escapeHtml(String(b.bidderName ?? ''))}</td>
+        <td>${escapeHtml(String(b.date ?? ''))}</td>
+      </tr>`
+    )
+    .join('');
+
+  tableWrap.innerHTML = `
+    <table>
+      <thead><tr><th>Jugador</th><th>Puja</th><th>Pujador</th><th>Fecha</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+document.getElementById('bids-download-json').addEventListener('click', () => downloadBids('json'));
+document.getElementById('bids-download-csv').addEventListener('click', () => downloadBids('csv'));
+
+function downloadBids(format) {
+  if (!currentBidsLeague) return;
+  const url = `/api/market/bids/download?leagueId=${currentBidsLeague.id}&userId=${currentBidsLeague.userId || ''}&format=${format}`;
   window.location.href = url;
 }
 
