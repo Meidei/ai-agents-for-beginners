@@ -106,106 +106,94 @@ async function getMarketRaw(token, leagueId, userId) {
   return biwengerFetch('/market', { token, league: leagueId, user: userId });
 }
 
-// The list of market listings has been observed under different keys
-// depending on account/league type. Try the known candidates before
-// giving up.
-function extractMarketItems(data) {
-  if (Array.isArray(data)) return data;
-  const candidates = [
-    data && data.sales,
-    data && data.players,
-    data && data.data && Array.isArray(data.data) && data.data,
-    data && data.data && data.data.sales,
-    data && data.market && data.market.sales,
-  ];
+// Biwenger wraps the market payload as { status, data: { sales, offers, ... } }
+// but that wrapping depth has been observed to vary. Find the object that
+// actually holds `sales`/`offers`, checking the raw payload itself and one
+// or two levels of `.data` nesting.
+function findMarketPayload(raw) {
+  const candidates = [raw, raw && raw.data, raw && raw.data && raw.data.data];
   for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
+    if (candidate && (Array.isArray(candidate.sales) || Array.isArray(candidate.offers))) {
+      return candidate;
+    }
   }
-  return [];
+  return {};
 }
 
-/** Lists the players currently on the transfer market for a league. */
-async function getMarket(token, leagueId, userId) {
-  const data = await getMarketRaw(token, leagueId, userId);
-  const items = extractMarketItems(data);
+function toIso(epochSeconds) {
+  if (!epochSeconds && epochSeconds !== 0) return undefined;
+  return new Date(epochSeconds * 1000).toISOString();
+}
 
-  if (!items.length) {
+/** Lists the players currently on the transfer market for a league
+ * (both free-agent listings and clause buyouts other managers put up). */
+async function getMarket(token, leagueId, userId) {
+  const raw = await getMarketRaw(token, leagueId, userId);
+  const payload = findMarketPayload(raw);
+  const sales = Array.isArray(payload.sales) ? payload.sales : [];
+
+  if (!sales.length) {
     console.warn(
-      '[biwenger] No market listings found. Raw payload for debugging:\n',
-      JSON.stringify(data, null, 2)
+      '[biwenger] No market listings (sales) found. Raw payload for debugging:\n',
+      JSON.stringify(raw, null, 2)
     );
   }
 
-  return items;
+  return sales;
 }
 
-// The list of bids/offers on a single market listing has been observed
-// under different keys. Try the known candidates before giving up.
-function extractBids(item) {
-  const candidates = [item.offers, item.bids, item.requests, item.sale && item.sale.offers];
-  for (const candidate of candidates) {
-    if (Array.isArray(candidate)) return candidate;
-  }
-  return [];
-}
-
-function extractPlayerInfo(item) {
-  const player = item.player || item.playerMaster || item;
-  return {
-    playerId: player.id,
-    playerName: player.name,
-  };
-}
-
-// The bidder is embedded under different keys depending on listing type
-// (free agent vs. player put up for sale by another manager).
-function extractBidder(bid) {
-  const candidates = [bid.from, bid.user, bid.manager, bid.by, bid.owner];
-  for (const candidate of candidates) {
-    if (candidate && typeof candidate === 'object') return candidate;
-  }
-  return null;
-}
-
-function extractAmount(bid) {
-  if (bid.amount !== undefined) return bid.amount;
-  if (bid.price !== undefined) return bid.price;
-  if (bid.value !== undefined) return bid.value;
-  return undefined;
-}
-
-function extractDate(bid) {
-  return bid.date || bid.createdAt || bid.timestamp || bid.until;
-}
-
-/** Lists every bid/offer placed on each market listing, with who placed it. */
+/**
+ * Lists every bid/offer placed on the market, with who placed it.
+ *
+ * Biwenger returns bids as a top-level `offers` array (sibling to `sales`,
+ * not nested inside each listing). Each offer carries `requestedPlayers`
+ * (the player id(s) it targets) and `from` (the bidder) — so bids are
+ * cross-referenced against `sales` by player id to attach the asking price.
+ * Biwenger's /market response doesn't include player names, only ids.
+ */
 async function getMarketBids(token, leagueId, userId) {
-  const items = await getMarket(token, leagueId, userId);
+  const raw = await getMarketRaw(token, leagueId, userId);
+  const payload = findMarketPayload(raw);
+  const sales = Array.isArray(payload.sales) ? payload.sales : [];
+  const offers = Array.isArray(payload.offers) ? payload.offers : [];
+
+  const saleByPlayerId = new Map();
+  for (const sale of sales) {
+    const playerId = sale.player && sale.player.id;
+    if (playerId !== undefined) saleByPlayerId.set(playerId, sale);
+  }
 
   const rows = [];
-  for (const item of items) {
-    const bids = extractBids(item);
-    if (!bids.length) continue;
+  for (const offer of offers) {
+    const requestedPlayers = Array.isArray(offer.requestedPlayers) ? offer.requestedPlayers : [];
+    const bidder = offer.from || null;
 
-    const { playerId, playerName } = extractPlayerInfo(item);
-    for (const bid of bids) {
-      const bidder = extractBidder(bid);
+    for (const playerId of requestedPlayers) {
+      const sale = saleByPlayerId.get(playerId);
       rows.push({
         playerId,
-        playerName,
-        bidAmount: extractAmount(bid),
+        askingPrice: sale ? sale.price : undefined,
+        bidAmount: offer.amount,
         bidderId: bidder && bidder.id,
-        bidderName: bidder && (bidder.name || bidder.userName),
-        date: extractDate(bid),
+        bidderName: bidder && bidder.name,
+        status: offer.status,
+        type: offer.type,
+        date: toIso(offer.created),
+        until: toIso(offer.until),
       });
     }
   }
 
-  if (items.length && !rows.length) {
+  if (offers.length && !rows.length) {
     console.warn(
-      '[biwenger] Market listings found but no bids could be extracted from them. ' +
-        'Raw first listing for debugging:\n',
-      JSON.stringify(items[0], null, 2)
+      '[biwenger] Offers found but none referenced a player via requestedPlayers. ' +
+        'Raw offers for debugging:\n',
+      JSON.stringify(offers, null, 2)
+    );
+  } else if (!offers.length) {
+    console.warn(
+      '[biwenger] No offers found in /market response. Raw payload for debugging:\n',
+      JSON.stringify(raw, null, 2)
     );
   }
 
