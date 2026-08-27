@@ -127,7 +127,7 @@ function toIso(epochSeconds) {
 
 /** Lists the players currently on the transfer market for a league
  * (both free-agent listings and clause buyouts other managers put up). */
-async function getMarket(token, leagueId, userId) {
+async function getMarket(token, leagueId, userId, competition = 'la-liga') {
   const raw = await getMarketRaw(token, leagueId, userId);
   const payload = findMarketPayload(raw);
   const sales = Array.isArray(payload.sales) ? payload.sales : [];
@@ -137,6 +137,11 @@ async function getMarket(token, leagueId, userId) {
       '[biwenger] No market listings (sales) found. Raw payload for debugging:\n',
       JSON.stringify(raw, null, 2)
     );
+  }
+
+  const db = await getPlayerDatabase(token, competition);
+  for (const sale of sales) {
+    if (sale.player) enrichPlayer(sale.player, db);
   }
 
   return sales;
@@ -151,7 +156,7 @@ async function getMarket(token, leagueId, userId) {
  * cross-referenced against `sales` by player id to attach the asking price.
  * Biwenger's /market response doesn't include player names, only ids.
  */
-async function getMarketBids(token, leagueId, userId) {
+async function getMarketBids(token, leagueId, userId, competition = 'la-liga') {
   const raw = await getMarketRaw(token, leagueId, userId);
   const payload = findMarketPayload(raw);
   const sales = Array.isArray(payload.sales) ? payload.sales : [];
@@ -163,6 +168,8 @@ async function getMarketBids(token, leagueId, userId) {
     if (playerId !== undefined) saleByPlayerId.set(playerId, sale);
   }
 
+  const db = await getPlayerDatabase(token, competition);
+
   const rows = [];
   for (const offer of offers) {
     const requestedPlayers = Array.isArray(offer.requestedPlayers) ? offer.requestedPlayers : [];
@@ -170,8 +177,12 @@ async function getMarketBids(token, leagueId, userId) {
 
     for (const playerId of requestedPlayers) {
       const sale = saleByPlayerId.get(playerId);
+      const player = { id: playerId };
+      enrichPlayer(player, db);
       rows.push({
         playerId,
+        playerName: player.name,
+        teamName: player.team,
         askingPrice: sale ? sale.price : undefined,
         bidAmount: offer.amount,
         bidderId: bidder && bidder.id,
@@ -202,11 +213,86 @@ async function getMarketBids(token, leagueId, userId) {
 
 /** Fetches the raw, unparsed player/team database for a competition (e.g.
  * "la-liga"). This is where player names and team names live — the /market
- * and /user endpoints only return player ids. Not yet wired into
- * getMarket/getMarketBids because the response shape hasn't been confirmed
- * against a real payload; use /api/debug/players to inspect it first. */
+ * and /user endpoints only return player ids. */
 async function getCompetitionPlayersRaw(token, competition = 'la-liga') {
   return biwengerFetch(`/competitions/${competition}/data?fields=id,name,players,teams`, { token });
+}
+
+// Same wrapping uncertainty as the market payload — find the object that
+// actually holds `players`/`teams`.
+function findPlayersPayload(raw) {
+  const candidates = [raw, raw && raw.data, raw && raw.data && raw.data.data];
+  for (const candidate of candidates) {
+    if (candidate && (candidate.players || candidate.teams)) return candidate;
+  }
+  return {};
+}
+
+// Biwenger returns both `players` and `teams` as objects keyed by id
+// (confirmed for players against a real payload) rather than arrays.
+// Handle both shapes defensively.
+function normalizeDict(value) {
+  const map = new Map();
+  if (!value) return map;
+
+  const entries = Array.isArray(value) ? value.map((item, i) => [i, item]) : Object.entries(value);
+  for (const [key, item] of entries) {
+    if (!item || typeof item !== 'object') continue;
+    const id = item.id !== undefined ? item.id : Number(key);
+    map.set(id, item);
+  }
+  return map;
+}
+
+const playerDbCache = new Map(); // competition slug -> { players, teams }
+
+/** Fetches (and caches, per server process) the player/team lookup for a
+ * competition. Degrades gracefully — if the competition slug is wrong or
+ * the request fails, logs a warning and returns empty maps instead of
+ * breaking the caller (market/bids still work, just without names). */
+async function getPlayerDatabase(token, competition = 'la-liga') {
+  if (playerDbCache.has(competition)) return playerDbCache.get(competition);
+
+  let players = new Map();
+  let teams = new Map();
+  try {
+    const raw = await getCompetitionPlayersRaw(token, competition);
+    const payload = findPlayersPayload(raw);
+    players = normalizeDict(payload.players);
+    teams = normalizeDict(payload.teams);
+
+    if (!players.size) {
+      console.warn(
+        `[biwenger] Competition "${competition}" data had no players. Raw payload for debugging:\n`,
+        JSON.stringify(raw, null, 2)
+      );
+    } else if (!teams.size) {
+      console.warn(
+        `[biwenger] Competition "${competition}" data had players but no teams — team names won't resolve. ` +
+          'Raw payload for debugging:\n',
+        JSON.stringify(raw, null, 2)
+      );
+    }
+  } catch (err) {
+    console.warn(
+      `[biwenger] Could not fetch competition "${competition}" player database (${err.message}). ` +
+        'Player/team names will be unavailable.'
+    );
+  }
+
+  const db = { players, teams };
+  playerDbCache.set(competition, db);
+  return db;
+}
+
+/** Mutates a `{ id }` player reference in place, adding `name` and `team`
+ * (team name) from the player database when available. */
+function enrichPlayer(player, db) {
+  const info = db.players.get(player.id);
+  if (!info) return;
+  player.name = info.name;
+  const team = db.teams.get(info.teamID);
+  player.team = team ? team.name : undefined;
 }
 
 module.exports = {

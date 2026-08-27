@@ -126,13 +126,13 @@ app.get('/api/team/download', requireAuth, async (req, res) => {
 });
 
 app.get('/api/market', requireAuth, async (req, res) => {
-  const { leagueId, userId } = req.query;
+  const { leagueId, userId, competition } = req.query;
   if (!leagueId) {
     return res.status(400).json({ error: 'leagueId query param is required.' });
   }
 
   try {
-    const market = await biwenger.getMarket(req.session.token, leagueId, userId);
+    const market = await biwenger.getMarket(req.session.token, leagueId, userId, competition);
     res.json({ market });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -156,13 +156,13 @@ app.get('/api/debug/market', requireAuth, async (req, res) => {
 });
 
 app.get('/api/market/download', requireAuth, async (req, res) => {
-  const { leagueId, userId, format = 'json' } = req.query;
+  const { leagueId, userId, competition, format = 'json' } = req.query;
   if (!leagueId) {
     return res.status(400).json({ error: 'leagueId query param is required.' });
   }
 
   try {
-    const market = await biwenger.getMarket(req.session.token, leagueId, userId);
+    const market = await biwenger.getMarket(req.session.token, leagueId, userId, competition);
 
     if (format === 'csv') {
       const csv = toCsv(market);
@@ -180,13 +180,13 @@ app.get('/api/market/download', requireAuth, async (req, res) => {
 });
 
 app.get('/api/market/bids', requireAuth, async (req, res) => {
-  const { leagueId, userId } = req.query;
+  const { leagueId, userId, competition } = req.query;
   if (!leagueId) {
     return res.status(400).json({ error: 'leagueId query param is required.' });
   }
 
   try {
-    const bids = await biwenger.getMarketBids(req.session.token, leagueId, userId);
+    const bids = await biwenger.getMarketBids(req.session.token, leagueId, userId, competition);
     res.json({ bids });
   } catch (err) {
     res.status(502).json({ error: err.message });
@@ -194,13 +194,13 @@ app.get('/api/market/bids', requireAuth, async (req, res) => {
 });
 
 app.get('/api/market/bids/download', requireAuth, async (req, res) => {
-  const { leagueId, userId, format = 'json' } = req.query;
+  const { leagueId, userId, competition, format = 'json' } = req.query;
   if (!leagueId) {
     return res.status(400).json({ error: 'leagueId query param is required.' });
   }
 
   try {
-    const bids = await biwenger.getMarketBids(req.session.token, leagueId, userId);
+    const bids = await biwenger.getMarketBids(req.session.token, leagueId, userId, competition);
 
     if (format === 'csv') {
       const csv = toCsv(bids);

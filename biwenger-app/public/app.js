@@ -226,15 +226,13 @@ function renderBids(bids) {
   }
 
   const players = new Set(bids.map((b) => b.playerId)).size;
-  summary.innerHTML = `
-    <p><strong>${bids.length}</strong> pujas sobre <strong>${players}</strong> jugadores</p>
-    <p class="hint">Biwenger no incluye el nombre del jugador en esta respuesta, solo su ID.</p>
-  `;
+  summary.innerHTML = `<p><strong>${bids.length}</strong> pujas sobre <strong>${players}</strong> jugadores</p>`;
 
   const rows = bids
     .map(
       (b) => `<tr>
-        <td>${escapeHtml(String(b.playerId ?? ''))}</td>
+        <td>${escapeHtml(String(b.playerName ?? b.playerId ?? ''))}</td>
+        <td>${escapeHtml(String(b.teamName ?? ''))}</td>
         <td>${escapeHtml(String(b.askingPrice ?? ''))}</td>
         <td>${escapeHtml(String(b.bidAmount ?? ''))}</td>
         <td>${escapeHtml(String(b.bidderName ?? ''))}</td>
@@ -245,19 +243,22 @@ function renderBids(bids) {
     .join('');
 
   tableWrap.innerHTML = `
-    <table>
-      <thead>
-        <tr>
-          <th>ID jugador</th>
-          <th>Precio pedido</th>
-          <th>Puja</th>
-          <th>Pujador</th>
-          <th>Estado</th>
-          <th>Fecha</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>Jugador</th>
+            <th>Equipo</th>
+            <th>Precio pedido</th>
+            <th>Puja</th>
+            <th>Pujador</th>
+            <th>Estado</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
   `;
 }
 
